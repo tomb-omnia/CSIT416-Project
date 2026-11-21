@@ -1,0 +1,8 @@
+node_modules
+dist
+*.tsbuildinfo
+.DS_Store
+
+# Kept local: team docs (contain names) and Claude instructions
+project_docs/
+CLAUDE.md
