@@ -76,7 +76,7 @@ export function AboutPage() {
             <li>No backend, database, real authentication, or email sending exists.</li>
             <li>Organizational email integration (required by UC15 to UC20) is simulated with seed data.</li>
             <li>Link, attachment, and sender verdicts come from simple deterministic mock rules.</li>
-            <li>UC25, UC26, UC27, and UC28 are extrapolated pending the team's written specifications.</li>
+            <li>UC25 to UC28 follow the team's written specifications; a few extra fields from earlier drafts are kept for the demo.</li>
             <li>Use the Demo Controls button (or Ctrl+Shift+D) to force slow, unavailable, and failure paths.</li>
           </ul>
         </Card>

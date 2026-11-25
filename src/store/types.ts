@@ -346,7 +346,8 @@ export interface CheckupResult {
 
 export interface DemoFlags {
   slow: boolean
-  unavailable: { scan: boolean; verify: boolean; purge: boolean; email: boolean }
+  /** `forms`: content forms and records fail to load (UC25 4A1, UC26 4A1, UC27 5A1, UC28 4A1). */
+  unavailable: { scan: boolean; verify: boolean; purge: boolean; email: boolean; forms?: boolean }
   saveFailure: boolean
   notifyFailure: boolean
   purgePartial: boolean

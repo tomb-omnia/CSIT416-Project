@@ -1,5 +1,6 @@
-// [EXTRAPOLATED] pending team spec
 // UC25 Publish Phishing/Scam Bulletin Notice: /bulletins (all roles) and /security/bulletins/new (CSO).
+// The team spec (Joshua Draft) asks for title, description, review, publish. Threat type, samples,
+// expiration, dashboard banner, and Retire are prototype extras kept from the earlier extrapolation.
 
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -8,6 +9,7 @@ import { useDemo, useMe, pushAudit, pushNotification } from '../../store/DemoSto
 import { Card, EmptyState, PageHeader } from '../../components/ui/Card'
 import { Button, LinkButton } from '../../components/ui/Button'
 import { Banner } from '../../components/ui/Banner'
+import { LoadGate } from '../../components/ui/LoadGate'
 import { StatusBadge } from '../../components/ui/StatusBadge'
 import { ConfirmDialog, MessageDialog, ValidationSummaryDialog } from '../../components/ui/Dialog'
 import { FieldGroup, SelectField, TextArea, TextField } from '../../components/ui/RequirementField'
@@ -77,7 +79,7 @@ export function BulletinsPage() {
     <>
       <PageHeader
         title="Bulletins"
-        uc="UC25 (extrapolated)"
+        uc="UC25"
         subtitle="Short, urgent alerts about active phishing and scam campaigns."
         actions={
           <>
@@ -160,7 +162,8 @@ export function NewBulletinPage() {
 
   return (
     <>
-      <PageHeader title="Publish Bulletin" uc="UC25 (extrapolated)" back={{ to: '/bulletins', label: 'Bulletins' }} subtitle="A short, urgent alert about an active campaign targeting the organization." actions={<Button variant="secondary" onClick={() => setPreview((p) => !p)}>{preview ? <><PenSquare className="h-4 w-4" /> Edit</> : <><Eye className="h-4 w-4" /> Preview</>}</Button>} />
+      <PageHeader title="Publish Bulletin" uc="UC25" back={{ to: '/bulletins', label: 'Bulletins' }} subtitle="A short, urgent alert about an active campaign targeting the organization." actions={<Button variant="secondary" onClick={() => setPreview((p) => !p)}>{preview ? <><PenSquare className="h-4 w-4" /> Edit</> : <><Eye className="h-4 w-4" /> Preview</>}</Button>} />
+      <LoadGate what="bulletin creation form">
       {kase && <Banner tone="info" className="mb-4" title={`Prefilled from investigation ${kase.id}`} />}
       {preview ? (
         <>
@@ -169,6 +172,7 @@ export function NewBulletinPage() {
           <div className="mt-6 flex gap-3">
             <Button onClick={() => form.submit(errors) ? setConfirm(true) : setPreview(false)}>Publish Bulletin</Button>
             <Button variant="secondary" onClick={() => setPreview(false)}>Back to edit</Button>
+            <Button variant="ghost" onClick={() => nav('/bulletins')}>Cancel</Button>
           </div>
         </>
       ) : (
@@ -198,13 +202,16 @@ export function NewBulletinPage() {
             <div className="flex gap-3">
               <Button variant="secondary" onClick={() => setPreview(true)}>Preview</Button>
               <Button onClick={() => form.submit(errors, { headline: 'Headline', lookFor: 'What to look for', whatToDo: 'What to do', sampleLink: 'Sample link', expires: 'Expiration date' }) && setConfirm(true)}>Publish Bulletin</Button>
+              {/* UC25 3A1: cancel discards the changes and returns to bulletin management. */}
+              <Button variant="ghost" onClick={() => nav('/bulletins')}>Cancel</Button>
             </div>
           </div>
         </Card>
       )}
+      </LoadGate>
       <ValidationSummaryDialog items={form.summary?.items ?? null} onClose={form.closeSummary} />
       <ConfirmDialog open={confirm} title="Publish bulletin" message="Publish this bulletin to all users?" onCancel={() => setConfirm(false)} onConfirm={publish} />
-      <MessageDialog open={!!error} onClose={() => setError(null)} tone="error" title={error ?? ''} />
+      <MessageDialog open={!!error} onClose={() => setError(null)} onRetry={() => { setError(null); publish() }} tone="error" title={error ?? ''} />
     </>
   )
 }

@@ -1,5 +1,7 @@
-// [EXTRAPOLATED] pending team spec
 // UC28 Publish Cyber Security Advisories: /advisories, /advisories/:id, /security/advisories/new and /edit/:id.
+// The team spec (Joshua Draft) asks for title, threat details, recommended precautions, review, publish.
+// Severity, audience, references, drafts, and acknowledgments are prototype extras kept from the
+// earlier extrapolation.
 
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -8,6 +10,7 @@ import { useDemo, useMe, pushAudit, pushNotification } from '../../store/DemoSto
 import { Card, EmptyState, PageHeader } from '../../components/ui/Card'
 import { Button, LinkButton } from '../../components/ui/Button'
 import { Banner } from '../../components/ui/Banner'
+import { LoadGate } from '../../components/ui/LoadGate'
 import { SeverityChip, StatusBadge } from '../../components/ui/StatusBadge'
 import { ConfirmDialog, MessageDialog, ValidationSummaryDialog } from '../../components/ui/Dialog'
 import { FieldGroup, PlainInput, PlainSelect, TextArea, TextField } from '../../components/ui/RequirementField'
@@ -40,7 +43,7 @@ export function AdvisoriesPage() {
     <>
       <PageHeader
         title="Security Advisories"
-        uc="UC28 (extrapolated)"
+        uc="UC28"
         subtitle="Formal advisories about vulnerabilities, threats, and policy changes."
         actions={
           <>
@@ -133,7 +136,7 @@ export function AdvisoryPage() {
   const acked = a.acks.includes(me.username)
   return (
     <>
-      <PageHeader title={a.title} uc="UC28 (extrapolated)" back={{ to: '/advisories', label: 'Advisories' }} actions={<SeverityChip severity={a.severity} />} subtitle={`Published ${fmtDate(a.publishedAt)} by ${a.author}`} />
+      <PageHeader title={a.title} uc="UC28" back={{ to: '/advisories', label: 'Advisories' }} actions={<SeverityChip severity={a.severity} />} subtitle={`Published ${fmtDate(a.publishedAt)} by ${a.author}`} />
       <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
         <Card>
           <AdvisoryBody a={a} />
@@ -198,7 +201,8 @@ export function AdvisoryEditorPage() {
   }
   const [preview, setPreview] = useState(false)
   const [confirm, setConfirm] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // Holds the status of a failed save so "Try Again" repeats it (UC28 11A1, 11A2).
+  const [failed, setFailed] = useState<Advisory['status'] | null>(null)
   const labels = { title: 'Title', audience: 'Audience', summary: 'Summary', details: 'Details', actions: 'Recommended actions', references: 'References', effective: 'Effective date' }
 
   const build = (status: Advisory['status']): Advisory => ({
@@ -210,7 +214,7 @@ export function AdvisoryEditorPage() {
   })
   const save = async (status: Advisory['status']) => {
     if ((await simulate('save')) !== 'ok') {
-      setError('Advisory could not be saved. Please try again.')
+      setFailed(status)
       return false
     }
     const adv = build(status)
@@ -255,11 +259,12 @@ export function AdvisoryEditorPage() {
     <>
       <PageHeader
         title={existing ? 'Edit Advisory' : 'New Advisory'}
-        uc="UC28 (extrapolated)"
+        uc="UC28"
         back={{ to: '/advisories', label: 'Advisories' }}
         subtitle="A formal advisory about a vulnerability, threat, or policy change."
         actions={<Button variant="secondary" onClick={() => setPreview((p) => !p)}>{preview ? <><PenSquare className="h-4 w-4" /> Edit</> : <><Eye className="h-4 w-4" /> Preview</>}</Button>}
       />
+      <LoadGate what="advisory creation form">
       {preview ? (
         <Card title={<span className="flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> {v.title || 'Untitled advisory'} <SeverityChip severity={v.severity} /></span>}>
           <AdvisoryBody a={build('Draft')} />
@@ -305,14 +310,23 @@ export function AdvisoryEditorPage() {
           </div>
         </Card>
       )}
+      </LoadGate>
       <div className="mt-6 flex gap-3">
         <Button variant="secondary" onClick={() => form.submit({ title: errors.title }, labels) && save('Draft')}>Save Draft</Button>
         {!preview && <Button variant="secondary" onClick={() => setPreview(true)}><Eye className="h-4 w-4" /> Preview</Button>}
         <Button onClick={() => { if (form.submit(errors, labels)) setConfirm(true); else setPreview(false) }}>Publish Advisory</Button>
+        {/* UC28 3A1 / 9A1: cancel discards pending changes and returns to advisory management. */}
+        <Button variant="ghost" onClick={() => nav('/advisories')}>Cancel</Button>
       </div>
       <ValidationSummaryDialog items={form.summary?.items ?? null} onClose={form.closeSummary} />
       <ConfirmDialog open={confirm} title="Publish advisory" message={`Publish "${v.title}" to ${v.audience.join(', ')}?`} onCancel={() => setConfirm(false)} onConfirm={() => { setConfirm(false); save('Published') }} />
-      <MessageDialog open={!!error} onClose={() => setError(null)} tone="error" title={error ?? ''} />
+      <MessageDialog
+        open={!!failed}
+        onClose={() => setFailed(null)}
+        onRetry={() => { const st = failed!; setFailed(null); save(st) }}
+        tone="error"
+        title={failed === 'Published' ? 'Advisory could not be published. Please try again.' : 'Advisory was not saved. Please try again.'}
+      />
     </>
   )
 }

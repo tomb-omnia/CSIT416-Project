@@ -40,7 +40,7 @@ const DemoContext = createContext<Ctx | null>(null)
 
 const defaultFlags: DemoFlags = {
   slow: false,
-  unavailable: { scan: false, verify: false, purge: false, email: false },
+  unavailable: { scan: false, verify: false, purge: false, email: false, forms: false },
   saveFailure: false,
   notifyFailure: false,
   purgePartial: false,
