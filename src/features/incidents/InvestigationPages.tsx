@@ -1,16 +1,19 @@
-// [EXTRAPOLATED] pending team spec
 // UC27 Investigate Phishing Incident: list, new case, case page.
+// Follows the team spec (Joshua Draft): select an incident, review details and evidence, record
+// findings, update status, submit. Indicators, response actions, and Close Investigation are
+// prototype extras kept from the earlier extrapolation.
 
 import { useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Ban, Lock, Megaphone, Plus, Target, Trash2, X } from 'lucide-react'
+import { LoadGate } from '../../components/ui/LoadGate'
 import { useDemo, useMe, pushAudit, pushNotification } from '../../store/DemoStore'
 import { Card, PageHeader } from '../../components/ui/Card'
 import { Button, LinkButton } from '../../components/ui/Button'
 import { Banner } from '../../components/ui/Banner'
 import { DataTable } from '../../components/ui/DataTable'
 import { SeverityChip, StatusBadge } from '../../components/ui/StatusBadge'
-import { ConfirmDialog, ValidationSummaryDialog } from '../../components/ui/Dialog'
+import { ConfirmDialog, MessageDialog, ValidationSummaryDialog } from '../../components/ui/Dialog'
 import { PlainInput, PlainSelect, SelectField, TextArea, TextField } from '../../components/ui/RequirementField'
 import { useForm } from '../../components/ui/useForm'
 import * as V from '../../lib/validators'
@@ -18,12 +21,41 @@ import { fmtDate, fmtDateTime, nowIso } from '../../lib/dates'
 import { caseId, uid } from '../../lib/ids'
 import { defang } from '../../store/mockRules'
 import { reportType } from '../email-defense/MyReportsPage'
-import type { CaseStatus, DemoState, Investigation, Severity } from '../../store/types'
+import type { CaseStatus, DemoState, Investigation, Report, Severity } from '../../store/types'
 
 const SEVERITIES: Severity[] = ['Low', 'Medium', 'High', 'Critical']
 
 function addTimeline(s: DemoState, id: string, by: string, text: string, auto = true) {
   s.investigations.find((c) => c.id === id)?.timeline.push({ id: uid('t'), at: nowIso(), by, text, auto })
+}
+
+/** UC27 step 6: reported email, links, attachments, and other evidence for one linked report. */
+function Evidence({ id, r }: { id: string; r: Report | undefined }) {
+  if (!r)
+    return <Banner tone="warning" title={`Evidence for report ${id} is unavailable.`}>You may continue the investigation with the available information.</Banner>
+  if (r.kind === 'email')
+    return (
+      <div className="rounded-md border border-slate-200 p-3 text-sm">
+        <div className="mb-1 font-medium">Report {r.id} · Reported email</div>
+        <div>From: <span className="font-mono">{defang(r.sender)}</span></div>
+        <div>Subject: {r.subject}</div>
+        <div className="mt-1">Automated scan: <StatusBadge status={r.scan} tone={r.scan === 'Clean' ? 'green' : r.scan === 'Malicious' ? 'red' : 'yellow'} /></div>
+        {r.status.includes('purged') && <p className="mt-2 text-yellow-800">The original email has been purged from mailboxes. Only the reported copy below is available.</p>}
+        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-2 font-mono text-xs">{defang(r.content)}</pre>
+      </div>
+    )
+  return (
+    <div className="rounded-md border border-slate-200 p-3 text-sm">
+      <div className="mb-1 font-medium">Report {r.id} · {r.incidentType}</div>
+      <div>Number: <span className="font-mono">{r.phone ?? 'Unknown/Blocked Number'}</span> · Occurred {fmtDateTime(r.occurredAt)}</div>
+      <p className="mt-2 whitespace-pre-wrap text-slate-700">{r.description}</p>
+      {r.evidence ? (
+        <div className="mt-2 rounded bg-slate-50 p-2 text-xs">Attached evidence: {r.evidence}</div>
+      ) : (
+        <p className="mt-2 text-yellow-800">No screenshot or recording was provided with this report. Continue with the available information.</p>
+      )}
+    </div>
+  )
 }
 
 export function InvestigationListPage() {
@@ -33,7 +65,7 @@ export function InvestigationListPage() {
     <>
       <PageHeader
         title="Investigations"
-        uc="UC27 (extrapolated)"
+        uc="UC27"
         subtitle="Phishing incident cases linking reports, indicators, and response actions."
         actions={
           <LinkButton to="/security/investigations/new">
@@ -45,7 +77,7 @@ export function InvestigationListPage() {
         rows={state.investigations}
         rowKey={(c) => c.id}
         onRowClick={(c) => nav(`/security/investigations/${c.id}`)}
-        empty="No investigations yet."
+        empty="No phishing incidents are available for investigation."
         initialSort={{ key: 'o', dir: 'desc' }}
         columns={[
           { key: 'id', header: 'Case ID', render: (c) => <span className="font-mono text-accent-700">{c.id}</span>, sort: (c) => c.id },
@@ -91,7 +123,7 @@ export function NewInvestigationPage() {
   }
   return (
     <>
-      <PageHeader title="New Investigation" uc="UC27 (extrapolated)" back={{ to: '/security/investigations', label: 'Investigations' }} />
+      <PageHeader title="New Investigation" uc="UC27" back={{ to: '/security/investigations', label: 'Investigations' }} />
       <Card>
         <div className="max-w-2xl">
           {rep && <Banner tone="info" className="mb-5" title={`Linked report: ${rep.id} (${reportType(rep)})`} />}
@@ -112,7 +144,7 @@ export function NewInvestigationPage() {
 
 export function InvestigationCasePage() {
   const { caseId: id } = useParams()
-  const { state, mutate, toast } = useDemo()
+  const { state, mutate, toast, simulate } = useDemo()
   const me = useMe()
   const nav = useNavigate()
   const c = state.investigations.find((x) => x.id === id)
@@ -120,8 +152,11 @@ export function InvestigationCasePage() {
   const [repErr, setRepErr] = useState<string | null>(null)
   const [ind, setInd] = useState({ kind: 'Domain' as Investigation['indicators'][number]['kind'], value: '' })
   const [aff, setAff] = useState({ username: '', relation: 'Received' as Investigation['affectedUsers'][number]['relation'] })
-  const noteForm = useForm({ note: '' })
-  const noteErr = V.lengthBetween('Note', noteForm.values.note, 20, 1500)
+  // UC27 steps 8 to 12: record findings, optionally update status, submit.
+  const noteForm = useForm({ note: '', status: '' })
+  const noteErr = !noteForm.values.note.trim() ? 'Investigation findings are required.' : V.lengthBetween('Findings', noteForm.values.note, 20, 1500)
+  const [saveFailed, setSaveFailed] = useState(false)
+  const [saving, setSaving] = useState(false)
   const closeForm = useForm({ resolution: '' })
   const resErr = V.lengthBetween('Resolution summary', closeForm.values.resolution, 50, 1500)
   const [closing, setClosing] = useState(false)
@@ -135,6 +170,28 @@ export function InvestigationCasePage() {
       </>
     )
   const closed = c.status === 'Closed'
+  // UC27 4A1: identify missing details and still show what is available.
+  const missing = [!c.description.trim() && 'description', c.reportIds.length === 0 && 'linked reports', c.affectedUsers.length === 0 && 'affected users'].filter(Boolean) as string[]
+
+  const submitFindings = async () => {
+    if (!noteForm.submit({ note: noteErr }, { note: 'Investigation findings' })) return
+    setSaving(true)
+    const r = await simulate('save')
+    setSaving(false)
+    if (r !== 'ok') return setSaveFailed(true)
+    const next = noteForm.values.status as CaseStatus | ''
+    upd((x, s) => {
+      addTimeline(s, c.id, me.username, `Findings: ${noteForm.values.note.trim()}`, false)
+      // UC27 9A1: with no new status selected, the current status is kept.
+      if (next && next !== x.status) {
+        addTimeline(s, c.id, me.username, `Status changed from ${x.status} to ${next}.`)
+        x.status = next
+      }
+      pushAudit(s, me, 'Investigation Updated', c.id, next && next !== c.status ? { oldValue: c.status, newValue: next } : {})
+    })
+    noteForm.reset({ note: '', status: '' })
+    toast('Investigation results saved successfully.')
+  }
   const upd = (fn: (x: Investigation, s: DemoState) => void) =>
     mutate((s) => {
       const x = s.investigations.find((y) => y.id === c.id)
@@ -191,20 +248,25 @@ export function InvestigationCasePage() {
   const section = 'mb-6'
   return (
     <>
-      <PageHeader title={`${c.id}: ${c.title}`} uc="UC27 (extrapolated)" back={{ to: '/security/investigations', label: 'Investigations' }} subtitle={`Opened ${fmtDateTime(c.openedAt)} · Assigned to ${c.assignedTo}`} actions={<><SeverityChip severity={c.severity} /><StatusBadge status={c.status} /></>} />
+      <PageHeader title={`${c.id}: ${c.title}`} uc="UC27" back={{ to: '/security/investigations', label: 'Investigations' }} subtitle={`Opened ${fmtDateTime(c.openedAt)} · Assigned to ${c.assignedTo}`} actions={<><SeverityChip severity={c.severity} /><StatusBadge status={c.status} /></>} />
+      <LoadGate what="incident details">
       {closed && <Banner tone="success" className="mb-6" title="Investigation closed">{c.resolution}</Banner>}
+      {!closed && missing.length > 0 && (
+        <Banner tone="warning" className="mb-6" title="This incident report is incomplete">
+          Missing: {missing.join(', ')}. The available information is shown below.
+        </Banner>
+      )}
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div>
           <Card className={section} title="Summary">
             <p className="text-slate-700">{c.description}</p>
             {!closed && (
               <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-                <label htmlFor="case-status" className="font-medium">
-                  Status
-                </label>
-                <PlainSelect id="case-status" className="w-40" value={c.status} onChange={(e) => upd((x, s) => { x.status = e.target.value as CaseStatus; addTimeline(s, c.id, me.username, `Status changed to ${e.target.value}.`) })}>
-                  {['Open', 'In Progress', 'Contained'].map((s) => <option key={s}>{s}</option>)}
-                </PlainSelect>
+                {/* Status changes go through "Record investigation findings" below (UC27 steps 8 to 11). */}
+                <span>
+                  <span className="font-medium">Status:</span> {c.status}{' '}
+                  <a href="#findings" onClick={(e) => { e.preventDefault(); document.getElementById('findings')?.scrollIntoView({ behavior: 'smooth' }) }} className="text-accent-700 underline">Update with findings</a>
+                </span>
                 <label htmlFor="case-sev" className="font-medium">
                   Severity
                 </label>
@@ -236,6 +298,15 @@ export function InvestigationCasePage() {
                   <Button variant="secondary" onClick={linkReport}>Link report</Button>
                 </div>
                 {repErr && <p className="mt-1 text-sm text-red-700">{repErr}</p>}
+              </div>
+            )}
+          </Card>
+          <Card className={section} title="Evidence">
+            {c.reportIds.length === 0 ? (
+              <Banner tone="warning" title="No evidence is available for this incident.">You may continue the investigation with the available information.</Banner>
+            ) : (
+              <div className="space-y-3">
+                {c.reportIds.map((rid) => <Evidence key={rid} id={rid} r={state.reports.find((x) => x.id === rid)} />)}
               </div>
             )}
           </Card>
@@ -305,12 +376,19 @@ export function InvestigationCasePage() {
               ))}
             </ol>
             {!closed && (
-              <>
-                <TextArea name="note" label="Add a note" rows={3} value={noteForm.values.note} onChange={(e) => noteForm.set('note', e.target.value)} status={noteForm.status('note', noteErr)} base="Enter a note between 20 and 1,500 characters." error={noteErr} />
-                <Button variant="secondary" onClick={() => { if (!noteForm.submit({ note: noteErr })) return; upd((_, s) => addTimeline(s, c.id, me.username, noteForm.values.note.trim(), false)); noteForm.reset({ note: '' }) }}>
-                  Add Note
-                </Button>
-              </>
+              <div id="findings">
+                <h3 className="mb-3 border-t pt-4 font-semibold">Record investigation findings</h3>
+                <TextArea name="note" label="Findings" rows={4} value={noteForm.values.note} onChange={(e) => noteForm.set('note', e.target.value)} status={noteForm.status('note', noteErr)} base="Enter your findings in 20 to 1,500 characters." error={noteErr} counter={{ value: noteForm.values.note.length, max: 1500 }} />
+                <SelectField name="status" label="Update status (optional)" value={noteForm.values.status} onChange={(e) => noteForm.set('status', e.target.value)} status="neutral" base="Leave unchanged to keep the current status.">
+                  <option value="">Keep current status ({c.status})</option>
+                  {(['Open', 'In Progress', 'Contained'] as CaseStatus[]).filter((x) => x !== c.status).map((x) => <option key={x}>{x}</option>)}
+                </SelectField>
+                <div className="flex gap-2">
+                  <Button onClick={submitFindings} disabled={saving}>{saving ? 'Saving…' : 'Submit Investigation Results'}</Button>
+                  {/* UC27 10A1: cancel discards pending changes and stays on the incident details page. */}
+                  <Button variant="ghost" disabled={saving} onClick={() => noteForm.reset({ note: '', status: '' })}>Cancel</Button>
+                </div>
+              </div>
             )}
           </Card>
         </div>
@@ -350,6 +428,8 @@ export function InvestigationCasePage() {
           )}
         </div>
       </div>
+      </LoadGate>
+      <MessageDialog open={saveFailed} onClose={() => setSaveFailed(false)} onRetry={() => { setSaveFailed(false); submitFindings() }} tone="error" title="Investigation results could not be saved. Please try again." />
       <ValidationSummaryDialog items={noteForm.summary?.items ?? closeForm.summary?.items ?? null} onClose={() => { noteForm.closeSummary(); closeForm.closeSummary() }} />
       <ConfirmDialog open={confirmClose} title="Close investigation" message={`Close ${c.id}? Linked reports will be marked Resolved and reporters notified.`} onCancel={() => setConfirmClose(false)} onConfirm={doClose} />
     </>

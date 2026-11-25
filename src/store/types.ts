@@ -290,6 +290,8 @@ export interface Bulletin {
   publishedAt: string
   publishedBy: string
   retired: boolean
+  /** UC25 8A1: saved but not yet published. Only Cybersecurity Officers see drafts. */
+  draft?: boolean
 }
 
 export type Severity = 'Low' | 'Medium' | 'High' | 'Critical'
@@ -346,7 +348,8 @@ export interface CheckupResult {
 
 export interface DemoFlags {
   slow: boolean
-  unavailable: { scan: boolean; verify: boolean; purge: boolean; email: boolean }
+  /** `forms`: content forms and records fail to load (UC25 4A1, UC26 4A1, UC27 5A1, UC28 4A1). */
+  unavailable: { scan: boolean; verify: boolean; purge: boolean; email: boolean; forms?: boolean }
   saveFailure: boolean
   notifyFailure: boolean
   purgePartial: boolean

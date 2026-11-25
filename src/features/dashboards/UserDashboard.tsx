@@ -10,7 +10,7 @@ import { fmtDate, fmtDateTime, isPastDeadline } from '../../lib/dates'
 import { LinkButton } from '../../components/ui/Button'
 
 export function activeBannerBulletins(bulletins: ReturnType<typeof useDemo>['state']['bulletins']) {
-  return bulletins.filter((b) => b.banner && !b.retired && new Date(b.expiresAt).getTime() > Date.now())
+  return bulletins.filter((b) => b.banner && !b.draft && !b.retired && new Date(b.expiresAt).getTime() > Date.now())
 }
 
 export default function UserDashboard() {

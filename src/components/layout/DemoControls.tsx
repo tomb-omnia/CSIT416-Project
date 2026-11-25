@@ -32,7 +32,7 @@ export function DemoControls() {
     return () => window.removeEventListener('keydown', h)
   }, [])
   const u = flags.unavailable
-  const active = flags.slow || u.scan || u.verify || u.purge || u.email || flags.saveFailure || flags.notifyFailure || flags.purgePartial
+  const active = flags.slow || u.scan || u.verify || u.purge || u.email || u.forms || flags.saveFailure || flags.notifyFailure || flags.purgePartial
   return (
     <div className="no-print fixed bottom-4 right-4 z-40">
       {open ? (
@@ -52,6 +52,7 @@ export function DemoControls() {
           <Toggle label="Verification service" checked={u.verify} onChange={(v) => setFlags({ unavailable: { ...u, verify: v } })} />
           <Toggle label="Purge service" checked={u.purge} onChange={(v) => setFlags({ unavailable: { ...u, purge: v } })} />
           <Toggle label="Email service" hint="Phishing test sends" checked={u.email} onChange={(v) => setFlags({ unavailable: { ...u, email: v } })} />
+          <Toggle label="Forms and records" hint="Bulletin, article, advisory, and investigation pages fail to load" checked={!!u.forms} onChange={(v) => setFlags({ unavailable: { ...u, forms: v } })} />
           <div className="mt-2 text-xs font-semibold uppercase text-slate-500">One-shot failures</div>
           <Toggle label="Save failure" hint="Next save shows the could-not-be-saved dialog" checked={flags.saveFailure} onChange={(v) => setFlags({ saveFailure: v })} />
           <Toggle label="Notification failure" hint="Next notifying action reports failure" checked={flags.notifyFailure} onChange={(v) => setFlags({ notifyFailure: v })} />

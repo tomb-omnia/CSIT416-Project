@@ -405,6 +405,11 @@ const investigations: Investigation[] = [
       { id: 't2', at: daysAgo(6), by: 'rokafor', text: 'Indicators added: sender, domain, URL.', auto: true },
       { id: 't3', at: daysAgo(5), by: 'rokafor', text: 'Confirmed with dyamamoto that credentials were entered; password reset forced by IT.', auto: false },
     ] },
+  // UC27 4A1 / 6A1: an incident with missing information and no evidence yet.
+  { id: 'CASE-0422', title: 'Gift card request texts impersonating a dean', severity: 'Medium', status: 'Open', assignedTo: 'rokafor', openedAt: daysAgo(1),
+    description: 'A staff member mentioned in passing that several colleagues received texts asking them to buy gift cards for a dean. No formal report has been filed yet.',
+    reportIds: [], indicators: [], affectedUsers: [],
+    timeline: [{ id: 't4', at: daysAgo(1), by: 'rokafor', text: 'Investigation opened.', auto: true }] },
 ]
 
 function notifications(): Notification[] {

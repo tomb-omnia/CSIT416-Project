@@ -317,7 +317,7 @@ export function verifyEmail(v: string): Result {
   return null
 }
 
-// ---------- Generic (extrapolated UCs 25 to 28) ----------
+// ---------- Generic (UC25 to UC28) ----------
 export function lengthBetween(label: string, v: string, min: number, max: number): Result {
   if (v.trim().length < min || v.length > max) return `${label} must be between ${min.toLocaleString()} and ${max.toLocaleString()} characters.`
   return null

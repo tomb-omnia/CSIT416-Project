@@ -114,7 +114,8 @@ export default function App() {
         <Route path="/bulletins" element={<BulletinsPage />} />
         <Route path="/advisories" element={<AdvisoriesPage />} />
         <Route path="/advisories/:id" element={<AdvisoryPage />} />
-        <Route path="/security/bulletins/new" element={r(CSO, <NewBulletinPage />)} />
+        <Route path="/security/bulletins/new" element={r(CSO, <NewBulletinPage key="new" />)} />
+        <Route path="/security/bulletins/edit/:id" element={r(CSO, <NewBulletinPage />)} />
         <Route path="/security/advisories/new" element={r(CSO, <AdvisoryEditorPage key="new" />)} />
         <Route path="/security/advisories/edit/:id" element={r(CSO, <AdvisoryEditorPage />)} />
 

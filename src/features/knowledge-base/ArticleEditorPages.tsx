@@ -1,18 +1,20 @@
-// [EXTRAPOLATED] pending team spec
 // UC26 Create Knowledge Base Article: editor (/kb/new, /kb/edit/:id) and My Articles (/kb/my-articles).
+// The team spec (Joshua Draft) asks for title, content, category, review, submit. Tags, summary,
+// submission notes, drafts, and the UC7 review loop are prototype extras kept from the earlier extrapolation.
 
 import { useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { PenSquare, X } from 'lucide-react'
+import { Eye, PenSquare, X } from 'lucide-react'
 import { useDemo, useMe, pushNotification } from '../../store/DemoStore'
 import { Card, PageHeader } from '../../components/ui/Card'
 import { Button, LinkButton } from '../../components/ui/Button'
 import { Banner } from '../../components/ui/Banner'
+import { LoadGate } from '../../components/ui/LoadGate'
 import { DataTable } from '../../components/ui/DataTable'
 import { StatusBadge } from '../../components/ui/StatusBadge'
 import { FieldGroup, SelectField, TextArea, TextField } from '../../components/ui/RequirementField'
 import { MessageDialog, ValidationSummaryDialog } from '../../components/ui/Dialog'
-import { RichTextEditor } from '../../components/ui/RichText'
+import { RichText, RichTextEditor } from '../../components/ui/RichText'
 import { useForm } from '../../components/ui/useForm'
 import * as V from '../../lib/validators'
 import { fmtDate, nowIso } from '../../lib/dates'
@@ -84,7 +86,10 @@ export function ArticleEditorPage() {
   })
   const v = form.values
   const [tagInput, setTagInput] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  // Holds the status of a failed save so "Try Again" repeats it (UC26 11A1).
+  const [failed, setFailed] = useState<'Draft' | 'Pending Review' | null>(null)
+  // UC26 step 8: the actor reviews the article details before submitting.
+  const [reviewing, setReviewing] = useState(false)
   const errors = {
     title: V.lengthBetween('Title', v.title, 5, 100),
     category: v.category ? null : 'Select a category.',
@@ -118,7 +123,7 @@ export function ArticleEditorPage() {
   const persist = async (status: 'Draft' | 'Pending Review') => {
     const r = await simulate('save')
     if (r !== 'ok') {
-      setError('Article could not be saved. Please try again.')
+      setFailed(status)
       return null
     }
     const artId = existing?.id ?? `KB-${Math.floor(200 + Math.random() * 700)}`
@@ -140,8 +145,12 @@ export function ArticleEditorPage() {
       nav('/kb/my-articles')
     }
   }
+  const labels = { title: 'Title', category: 'Category', tags: 'Tags', summary: 'Short summary', body: 'Body', notes: 'Submission notes' }
+  const review = () => {
+    if (form.submit(errors, labels)) setReviewing(true)
+  }
   const submit = async () => {
-    if (!form.submit(errors, { title: 'Title', category: 'Category', tags: 'Tags', summary: 'Short summary', body: 'Body', notes: 'Submission notes' })) return
+    if (!form.submit(errors, labels)) return setReviewing(false)
     if (await persist('Pending Review')) {
       toast('Article submitted for review.')
       nav('/kb/my-articles')
@@ -150,7 +159,7 @@ export function ArticleEditorPage() {
 
   return (
     <>
-      <PageHeader title={existing ? 'Edit Article' : 'Write Article'} uc="UC26 (extrapolated)" back={{ to: '/kb/my-articles', label: 'My Articles' }} subtitle="Submitted articles are reviewed by a Cybersecurity Officer before publishing." />
+      <PageHeader title={existing ? 'Edit Article' : 'Write Article'} uc="UC26" back={{ to: '/kb/my-articles', label: 'My Articles' }} subtitle="Submitted articles are reviewed by a Cybersecurity Officer before publishing." />
       {existing?.status === 'Awaiting Revision' && existing.review && (
         <Card className="mb-6 border-yellow-300" title="Reviewer requested revisions">
           <p className="mb-3 text-sm">
@@ -164,6 +173,31 @@ export function ArticleEditorPage() {
           </div>
         </Card>
       )}
+      <LoadGate what="article creation form">
+      {reviewing ? (
+        <Card title="Review your article">
+          <p className="mb-4 text-sm text-slate-600">This is how the article will appear once published. Select Edit to make changes.</p>
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{v.category}</div>
+          <h2 className="mt-1 text-2xl font-semibold">{v.title}</h2>
+          <p className="mt-2 text-slate-600">{v.summary}</p>
+          {v.tags.length > 0 && <div className="mt-2 text-sm text-slate-500">{v.tags.map((t) => `#${t}`).join(' ')}</div>}
+          <div className="mt-5 border-t pt-5">
+            <RichText source={v.body} />
+          </div>
+          {v.notes && (
+            <div className="mt-5 rounded-md bg-slate-50 p-3 text-sm">
+              <span className="font-medium">Submission notes:</span> {v.notes}
+            </div>
+          )}
+          <div className="mt-6 flex gap-3">
+            <Button onClick={submit}>Submit for Review</Button>
+            <Button variant="secondary" onClick={() => setReviewing(false)}>
+              <PenSquare className="h-4 w-4" /> Edit
+            </Button>
+            <Button variant="ghost" onClick={() => nav('/kb/my-articles')}>Cancel</Button>
+          </div>
+        </Card>
+      ) : (
       <Card>
         <TextField name="title" label="Title" value={v.title} onChange={(e) => form.set('title', e.target.value)} status={form.status('title', errors.title)} base="Enter a title between 5 and 100 characters." error={errors.title} counter={{ value: v.title.length, max: 100 }} />
         <div className="grid gap-x-6 md:grid-cols-2">
@@ -211,11 +245,23 @@ export function ArticleEditorPage() {
           <Button variant="secondary" onClick={saveDraft}>
             Save Draft
           </Button>
-          <Button onClick={submit}>Submit for Review</Button>
+          <Button onClick={review}>
+            <Eye className="h-4 w-4" /> Review Article
+          </Button>
+          {/* UC26 3A1 / 9A1: cancel discards the changes and returns to the knowledge base. */}
+          <Button variant="ghost" onClick={() => nav('/kb/my-articles')}>Cancel</Button>
         </div>
       </Card>
+      )}
+      </LoadGate>
       <ValidationSummaryDialog items={form.summary?.items ?? null} onClose={form.closeSummary} />
-      <MessageDialog open={!!error} onClose={() => setError(null)} tone="error" title={error ?? ''} />
+      <MessageDialog
+        open={!!failed}
+        onClose={() => setFailed(null)}
+        onRetry={() => { const st = failed; setFailed(null); if (st === 'Draft') saveDraft(); else submit() }}
+        tone="error"
+        title="Article could not be saved. Please try again."
+      />
     </>
   )
 }
@@ -227,7 +273,7 @@ export function MyArticlesPage() {
   const mine = state.articles.filter((a) => a.author === me.username)
   return (
     <>
-      <PageHeader title="My Articles" uc="UC26 (extrapolated)" subtitle="Knowledge Base articles you have written." actions={<LinkButton to="/kb/new"><PenSquare className="h-4 w-4" /> Write Article</LinkButton>} />
+      <PageHeader title="My Articles" uc="UC26" subtitle="Knowledge Base articles you have written." actions={<LinkButton to="/kb/new"><PenSquare className="h-4 w-4" /> Write Article</LinkButton>} />
       <DataTable
         rows={mine}
         rowKey={(a) => a.id}

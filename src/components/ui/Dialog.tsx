@@ -41,10 +41,18 @@ export function Dialog({ open, onClose, title, children, footer, wide, tone }: {
   )
 }
 
-/** Simple message dialog with a single OK button. */
-export function MessageDialog({ open, onClose, title, message, tone = 'info', okLabel = 'OK' }: { open: boolean; onClose: () => void; title: string; message?: ReactNode; tone?: 'error' | 'success' | 'warning' | 'info'; okLabel?: string }) {
+/** Simple message dialog with a single OK button, or Cancel + "Try Again" when `onRetry` is given. */
+export function MessageDialog({ open, onClose, onRetry, title, message, tone = 'info', okLabel }: { open: boolean; onClose: () => void; onRetry?: () => void; title: string; message?: ReactNode; tone?: 'error' | 'success' | 'warning' | 'info'; okLabel?: string }) {
+  const footer = onRetry ? (
+    <>
+      <Button variant="secondary" onClick={onClose}>{okLabel ?? 'Cancel'}</Button>
+      <Button onClick={onRetry}>Try Again</Button>
+    </>
+  ) : (
+    <Button onClick={onClose}>{okLabel ?? 'OK'}</Button>
+  )
   return (
-    <Dialog open={open} onClose={onClose} title={title} tone={tone} footer={<Button onClick={onClose}>{okLabel}</Button>}>
+    <Dialog open={open} onClose={onClose} title={title} tone={tone} footer={footer}>
       {message}
     </Dialog>
   )
