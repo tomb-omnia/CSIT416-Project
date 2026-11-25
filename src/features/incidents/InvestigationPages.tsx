@@ -262,12 +262,11 @@ export function InvestigationCasePage() {
             <p className="text-slate-700">{c.description}</p>
             {!closed && (
               <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-                <label htmlFor="case-status" className="font-medium">
-                  Status
-                </label>
-                <PlainSelect id="case-status" className="w-40" value={c.status} onChange={(e) => upd((x, s) => { x.status = e.target.value as CaseStatus; addTimeline(s, c.id, me.username, `Status changed to ${e.target.value}.`) })}>
-                  {['Open', 'In Progress', 'Contained'].map((s) => <option key={s}>{s}</option>)}
-                </PlainSelect>
+                {/* Status changes go through "Record investigation findings" below (UC27 steps 8 to 11). */}
+                <span>
+                  <span className="font-medium">Status:</span> {c.status}{' '}
+                  <a href="#findings" onClick={(e) => { e.preventDefault(); document.getElementById('findings')?.scrollIntoView({ behavior: 'smooth' }) }} className="text-accent-700 underline">Update with findings</a>
+                </span>
                 <label htmlFor="case-sev" className="font-medium">
                   Severity
                 </label>
@@ -377,7 +376,7 @@ export function InvestigationCasePage() {
               ))}
             </ol>
             {!closed && (
-              <>
+              <div id="findings">
                 <h3 className="mb-3 border-t pt-4 font-semibold">Record investigation findings</h3>
                 <TextArea name="note" label="Findings" rows={4} value={noteForm.values.note} onChange={(e) => noteForm.set('note', e.target.value)} status={noteForm.status('note', noteErr)} base="Enter your findings in 20 to 1,500 characters." error={noteErr} counter={{ value: noteForm.values.note.length, max: 1500 }} />
                 <SelectField name="status" label="Update status (optional)" value={noteForm.values.status} onChange={(e) => noteForm.set('status', e.target.value)} status="neutral" base="Leave unchanged to keep the current status.">
@@ -389,7 +388,7 @@ export function InvestigationCasePage() {
                   {/* UC27 10A1: cancel discards pending changes and stays on the incident details page. */}
                   <Button variant="ghost" disabled={saving} onClick={() => noteForm.reset({ note: '', status: '' })}>Cancel</Button>
                 </div>
-              </>
+              </div>
             )}
           </Card>
         </div>

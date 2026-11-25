@@ -3,7 +3,7 @@
 // expiration, dashboard banner, and Retire are prototype extras kept from the earlier extrapolation.
 
 import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AlertTriangle, Eye, Megaphone, PenSquare } from 'lucide-react'
 import { useDemo, useMe, pushAudit, pushNotification } from '../../store/DemoStore'
 import { Card, EmptyState, PageHeader } from '../../components/ui/Card'
@@ -20,7 +20,7 @@ import { defang } from '../../store/mockRules'
 import type { Bulletin } from '../../store/types'
 
 const THREATS = ['Email', 'Text/SMS', 'Phone', 'Social Media', 'Other']
-const isActive = (b: Bulletin) => !b.retired && new Date(b.expiresAt).getTime() > Date.now()
+const isActive = (b: Bulletin) => !b.draft && !b.retired && new Date(b.expiresAt).getTime() > Date.now()
 
 function BulletinCard({ b, onRetire }: { b: Bulletin; onRetire?: () => void }) {
   const active = isActive(b)
@@ -73,8 +73,9 @@ export function BulletinsPage() {
   const [retire, setRetire] = useState<Bulletin | null>(null)
   const sorted = [...state.bulletins].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
   const active = sorted.filter(isActive)
-  const archived = sorted.filter((b) => !isActive(b))
+  const archived = sorted.filter((b) => !b.draft && !isActive(b))
   const officer = me.role === 'officer'
+  const drafts = officer ? state.bulletins.filter((b) => b.draft) : []
   return (
     <>
       <PageHeader
@@ -88,6 +89,24 @@ export function BulletinsPage() {
           </>
         }
       />
+      {drafts.length > 0 && (
+        <>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Drafts</h2>
+          <ul className="mb-8 divide-y rounded-lg border border-slate-200 bg-white">
+            {drafts.map((b) => (
+              <li key={b.id}>
+                <Link to={`/security/bulletins/edit/${b.id}`} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-slate-50">
+                  <span>
+                    <span className="font-medium text-accent-700">{b.headline}</span>
+                    <span className="ml-2 text-xs text-slate-500">Saved {fmtDate(b.publishedAt)} by {b.publishedBy}</span>
+                  </span>
+                  <StatusBadge status="Draft" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Active</h2>
       <div className="space-y-4">
         {active.length === 0 ? <EmptyState>No active bulletins.</EmptyState> : active.map((b) => <BulletinCard key={b.id} b={b} onRetire={officer ? () => setRetire(b) : undefined} />)}
@@ -118,18 +137,24 @@ export function NewBulletinPage() {
   const me = useMe()
   const nav = useNavigate()
   const [params] = useSearchParams()
+  const { id: draftId } = useParams()
+  const existing = state.bulletins.find((b) => b.id === draftId && b.draft)
   const kase = state.investigations.find((c) => c.id === params.get('case'))
-  const form = useForm({
-    headline: kase ? kase.title : '',
-    threatType: 'Email',
-    lookFor: kase ? kase.description : '',
-    whatToDo: '',
-    sampleSender: kase?.indicators.find((i) => i.kind === 'Sender')?.value ?? '',
-    sampleSubject: '',
-    sampleLink: kase?.indicators.find((i) => i.kind === 'URL')?.value ?? '',
-    expires: toDateInput(new Date(daysAhead(14))),
-    banner: true,
-  })
+  const form = useForm(
+    existing
+      ? { headline: existing.headline, threatType: existing.threatType, lookFor: existing.lookFor, whatToDo: existing.whatToDo, sampleSender: existing.sampleSender, sampleSubject: existing.sampleSubject, sampleLink: existing.sampleLink, expires: existing.expiresAt.slice(0, 10), banner: existing.banner }
+      : {
+          headline: kase ? kase.title : '',
+          threatType: 'Email',
+          lookFor: kase ? kase.description : '',
+          whatToDo: '',
+          sampleSender: kase?.indicators.find((i) => i.kind === 'Sender')?.value ?? '',
+          sampleSubject: '',
+          sampleLink: kase?.indicators.find((i) => i.kind === 'URL')?.value ?? '',
+          expires: toDateInput(new Date(daysAhead(14))),
+          banner: true,
+        },
+  )
   const v = form.values
   const exp = parseDateInput(v.expires)
   const errors = {
@@ -141,16 +166,34 @@ export function NewBulletinPage() {
   }
   const [preview, setPreview] = useState(false)
   const [confirm, setConfirm] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // Holds which action failed so "Try Again" repeats it (UC25 10A1, 10A2).
+  const [failed, setFailed] = useState<'publish' | 'draft' | null>(null)
 
   const draft: Bulletin = { id: 'preview', headline: v.headline, threatType: v.threatType, lookFor: v.lookFor, whatToDo: v.whatToDo, sampleSender: v.sampleSender, sampleSubject: v.sampleSubject, sampleLink: v.sampleLink, expiresAt: exp ? endOfDay(exp).toISOString() : nowIso(), banner: v.banner, publishedAt: nowIso(), publishedBy: me.username, retired: false }
 
+  const newId = () => `BUL-${Math.floor(20 + Math.random() * 900)}`
+
+  /** UC25 8A1: save without publishing. `canceled` is the Cancel-on-review path. */
+  const saveDraft = async (canceled = false) => {
+    // ASSUMPTION: like advisory and article drafts, a bulletin draft only needs a valid headline.
+    if (!form.submit({ headline: errors.headline }, { headline: 'Headline' })) return setPreview(false)
+    if ((await simulate('save')) !== 'ok') return setFailed('draft')
+    const id = existing?.id ?? newId()
+    mutate((s) => {
+      s.bulletins = s.bulletins.filter((b) => b.id !== id)
+      s.bulletins.unshift({ ...draft, id, draft: true, publishedAt: nowIso() })
+    })
+    toast(canceled ? 'Publication canceled. The bulletin was saved as a draft.' : 'Draft saved.')
+    nav('/bulletins')
+  }
+
   const publish = async () => {
     setConfirm(false)
-    if ((await simulate('save')) !== 'ok') return setError('Bulletin could not be published. Please try again.')
+    if ((await simulate('save')) !== 'ok') return setFailed('publish')
     const notified = (await simulate('notify')) === 'ok'
-    const id = `BUL-${Math.floor(20 + Math.random() * 900)}`
+    const id = existing?.id ?? newId()
     mutate((s) => {
+      s.bulletins = s.bulletins.filter((b) => b.id !== id)
       s.bulletins.unshift({ ...draft, id })
       if (notified) pushNotification(s, s.users.filter((u) => u.status === 'Active').map((u) => u.username), `New scam bulletin: ${v.headline}`, `/bulletins#${id}`)
       pushAudit(s, me, 'Bulletin Published', id, { newValue: v.headline })
@@ -160,9 +203,17 @@ export function NewBulletinPage() {
     nav('/bulletins')
   }
 
+  if (draftId && !existing)
+    return (
+      <>
+        <PageHeader title="Edit Draft Bulletin" back={{ to: '/bulletins', label: 'Bulletins' }} />
+        <Banner tone="error" title="This draft is no longer available." />
+      </>
+    )
+
   return (
     <>
-      <PageHeader title="Publish Bulletin" uc="UC25" back={{ to: '/bulletins', label: 'Bulletins' }} subtitle="A short, urgent alert about an active campaign targeting the organization." actions={<Button variant="secondary" onClick={() => setPreview((p) => !p)}>{preview ? <><PenSquare className="h-4 w-4" /> Edit</> : <><Eye className="h-4 w-4" /> Preview</>}</Button>} />
+      <PageHeader title={existing ? 'Edit Draft Bulletin' : 'Publish Bulletin'} uc="UC25" back={{ to: '/bulletins', label: 'Bulletins' }} subtitle="A short, urgent alert about an active campaign targeting the organization." actions={<Button variant="secondary" onClick={() => setPreview((p) => !p)}>{preview ? <><PenSquare className="h-4 w-4" /> Edit</> : <><Eye className="h-4 w-4" /> Preview</>}</Button>} />
       <LoadGate what="bulletin creation form">
       {kase && <Banner tone="info" className="mb-4" title={`Prefilled from investigation ${kase.id}`} />}
       {preview ? (
@@ -172,7 +223,8 @@ export function NewBulletinPage() {
           <div className="mt-6 flex gap-3">
             <Button onClick={() => form.submit(errors) ? setConfirm(true) : setPreview(false)}>Publish Bulletin</Button>
             <Button variant="secondary" onClick={() => setPreview(false)}>Back to edit</Button>
-            <Button variant="ghost" onClick={() => nav('/bulletins')}>Cancel</Button>
+            {/* UC25 8A1: canceling before publishing saves the bulletin as a draft. */}
+            <Button variant="ghost" onClick={() => saveDraft(true)}>Cancel</Button>
           </div>
         </>
       ) : (
@@ -200,6 +252,7 @@ export function NewBulletinPage() {
               </label>
             </FieldGroup>
             <div className="flex gap-3">
+              <Button variant="secondary" onClick={() => saveDraft()}>Save Draft</Button>
               <Button variant="secondary" onClick={() => setPreview(true)}>Preview</Button>
               <Button onClick={() => form.submit(errors, { headline: 'Headline', lookFor: 'What to look for', whatToDo: 'What to do', sampleLink: 'Sample link', expires: 'Expiration date' }) && setConfirm(true)}>Publish Bulletin</Button>
               {/* UC25 3A1: cancel discards the changes and returns to bulletin management. */}
@@ -211,7 +264,13 @@ export function NewBulletinPage() {
       </LoadGate>
       <ValidationSummaryDialog items={form.summary?.items ?? null} onClose={form.closeSummary} />
       <ConfirmDialog open={confirm} title="Publish bulletin" message="Publish this bulletin to all users?" onCancel={() => setConfirm(false)} onConfirm={publish} />
-      <MessageDialog open={!!error} onClose={() => setError(null)} onRetry={() => { setError(null); publish() }} tone="error" title={error ?? ''} />
+      <MessageDialog
+        open={!!failed}
+        onClose={() => setFailed(null)}
+        onRetry={() => { const f = failed; setFailed(null); if (f === 'draft') saveDraft(); else publish() }}
+        tone="error"
+        title={failed === 'draft' ? 'The bulletin was not saved. Please try again.' : 'Bulletin could not be published. Please try again.'}
+      />
     </>
   )
 }

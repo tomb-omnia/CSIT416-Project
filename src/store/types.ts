@@ -290,6 +290,8 @@ export interface Bulletin {
   publishedAt: string
   publishedBy: string
   retired: boolean
+  /** UC25 8A1: saved but not yet published. Only Cybersecurity Officers see drafts. */
+  draft?: boolean
 }
 
 export type Severity = 'Low' | 'Medium' | 'High' | 'Critical'
